@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "kdc Resource (v1alpha1)",
+  "description": "Validates one kdc Resource manifest against docs/design-docs/api-design.md. Arbitrary target desired fields are preserved. See docs/schema.md for validation limits.",
+  "type": "object",
+  "properties": {
+    "apiVersion": {
+      "const": "kdc.rolphr.dev/v1alpha1"
+    },
+    "kind": {
+      "const": "Resource"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/literal"
+        },
+        "namespace": {
+          "$ref": "#/$defs/literal"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "description": "Standard Kubernetes metadata, including server-populated fields. Namespace may be supplied by the Kubernetes client."
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "references": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/reference"
+          },
+          "default": {}
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "additionalProperties": false
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "literal": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "\\{\\{"
+      }
+    },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "apiVersion": {
+          "$ref": "#/$defs/literal"
+        },
+        "kind": {
+          "$ref": "#/$defs/literal"
+        },
+        "name": {
+          "$ref": "#/$defs/literal"
+        },
+        "namespace": {
+          "$ref": "#/$defs/literal"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "targetReadiness": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "None"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "Predicates"
+                },
+                "observedGeneration": {
+                  "type": "string",
+                  "enum": [
+                    "IfPresent",
+                    "Require",
+                    "Ignore"
+                  ],
+                  "default": "IfPresent"
+                },
+                "checks": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/predicate"
+                  }
+                }
+              },
+              "required": [
+                "mode",
+                "checks"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency"
+          },
+          "default": [],
+          "description": "Dependency names must be unique and references must name declared aliases; these require semantic validation."
+        },
+        "reconcileInterval": {
+          "type": "string",
+          "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$",
+          "default": "1m",
+          "description": "Positive Go-style duration syntax. Admission must enforce the inclusive range 1s through 24h."
+        },
+        "deletionPolicy": {
+          "type": "string",
+          "enum": [
+            "abandon",
+            "delete",
+            "prevent-deletion"
+          ],
+          "default": "abandon"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "dependency": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "reference": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "readiness": {
+          "$ref": "#/$defs/readiness"
+        }
+      },
+      "required": [
+        "name",
+        "reference",
+        "readiness"
+      ],
+      "additionalProperties": false
+    },
+    "readiness": {
+      "type": "object",
+      "properties": {
+        "observedGeneration": {
+          "type": "string",
+          "enum": [
+            "IfPresent",
+            "Require",
+            "Ignore"
+          ],
+          "default": "IfPresent"
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/predicate"
+          }
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "additionalProperties": false
+    },
+    "predicate": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/conditionPredicate"
+        },
+        "field": {
+          "$ref": "#/$defs/fieldPredicate"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "condition"
+          ]
+        },
+        {
+          "required": [
+            "field"
+          ]
+        }
+      ]
+    },
+    "conditionPredicate": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "True",
+            "False",
+            "Unknown"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "fieldPredicate": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~[01])*)+$",
+          "description": "Absolute JSON Pointer with RFC 6901 escaping; evaluated as a literal path, never as an executable query."
+        },
+        "equals": {}
+      },
+      "required": [
+        "path",
+        "equals"
+      ],
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata"
+      ],
+      "properties": {
+        "apiVersion": {
+          "$ref": "#/$defs/literal"
+        },
+        "kind": {
+          "$ref": "#/$defs/literal"
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/literal"
+            },
+            "namespace": {
+              "$ref": "#/$defs/literal"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "not": {
+                  "pattern": "^kdc\\.rolphr\\.dev/"
+                }
+              }
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "not": {
+                  "pattern": "^kdc\\.rolphr\\.dev/"
+                }
+              }
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "status": false
+      },
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "apiVersion",
+          "kind"
+        ],
+        "properties": {
+          "apiVersion": {
+            "pattern": "^kdc\\.rolphr\\.dev/"
+          },
+          "kind": {
+            "const": "Resource"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "observedGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "appliedGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "apiVersion": {
+              "$ref": "#/$defs/literal"
+            },
+            "kind": {
+              "$ref": "#/$defs/literal"
+            },
+            "name": {
+              "$ref": "#/$defs/literal"
+            },
+            "namespace": {
+              "$ref": "#/$defs/literal"
+            },
+            "uid": {
+              "$ref": "#/$defs/literal"
+            }
+          },
+          "additionalProperties": false
+        },
+        "lastSuccessfulReconcileTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastAppliedTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "unresolvedReferences": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Diagnostic entry fields are not yet specified by the API design."
+        },
+        "unreadyDependencies": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Diagnostic entry fields are not yet specified by the API design."
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/statusCondition"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "statusCondition": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "True",
+            "False",
+            "Unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "observedGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastTransitionTime": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "type",
+        "status",
+        "reason",
+        "message",
+        "observedGeneration",
+        "lastTransitionTime"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
