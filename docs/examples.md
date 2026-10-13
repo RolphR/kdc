@@ -3,7 +3,8 @@
 The examples use the proposed kdc API to create a VM, private managed PostgreSQL,
 and TCP 5432 access between them. The repository currently contains designs and
 schemas, so these are design fixtures. Running them requires a compatible kdc
-controller and its CRD, plus the cloud provider controllers and credentials.
+controller, the [kdc CRD](schema.md#kubernetes-crd), and cloud provider controllers
+and credentials.
 
 | Cloud | Controller | VM address | Database networking | Access rule |
 | --- | --- | --- | --- | --- |

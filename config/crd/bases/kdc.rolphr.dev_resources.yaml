@@ -1,0 +1,385 @@
+# See docs/schema.md for validation boundaries and installation.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: resources.kdc.rolphr.dev
+spec:
+  group: kdc.rolphr.dev
+  scope: Namespaced
+  names:
+    plural: resources
+    singular: resource
+    kind: Resource
+    listKind: ResourceList
+    shortNames:
+      - kdcr
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+        - name: Target Kind
+          type: string
+          jsonPath: .spec.target.kind
+        - name: Target Name
+          type: string
+          jsonPath: .spec.target.metadata.name
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          description: Namespaced kdc wrapper for a desired Kubernetes target and its dependencies.
+          type: object
+          properties:
+            apiVersion:
+              enum:
+                - kdc.rolphr.dev/v1alpha1
+              type: string
+            kind:
+              enum:
+                - Resource
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                references:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      apiVersion:
+                        type: string
+                        minLength: 1
+                        not:
+                          pattern: \{\{
+                      kind:
+                        type: string
+                        minLength: 1
+                        not:
+                          pattern: \{\{
+                      name:
+                        type: string
+                        minLength: 1
+                        not:
+                          pattern: \{\{
+                      namespace:
+                        type: string
+                        minLength: 1
+                        not:
+                          pattern: \{\{
+                    required:
+                      - apiVersion
+                      - kind
+                      - name
+                  default: {}
+                  x-kubernetes-validations:
+                    - rule: self.all(alias, alias.matches('^[A-Za-z_][A-Za-z0-9_]*$'))
+                      message: Reference aliases must match [A-Za-z_][A-Za-z0-9_]*.
+                lifecycle:
+                  type: object
+                  properties:
+                    targetReadiness:
+                      type: object
+                      properties:
+                        observedGeneration:
+                          type: string
+                          enum:
+                            - IfPresent
+                            - Require
+                            - Ignore
+                          description: Defaults to IfPresent in Predicates mode; omitted in None mode.
+                        checks:
+                          type: array
+                          minItems: 1
+                          items:
+                            type: object
+                            properties:
+                              condition:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                    minLength: 1
+                                  status:
+                                    type: string
+                                    enum:
+                                      - 'True'
+                                      - 'False'
+                                      - Unknown
+                                required:
+                                  - type
+                                  - status
+                              field:
+                                type: object
+                                properties:
+                                  path:
+                                    type: string
+                                    pattern: ^(?:/(?:[^~/]|~[01])*)+$
+                                    description: Absolute JSON Pointer with RFC 6901 escaping; evaluated as a literal path,
+                                      never as an executable query.
+                                  equals:
+                                    nullable: true
+                                    x-kubernetes-preserve-unknown-fields: true
+                                    description: Required exact JSON comparison value, including null, false, zero, arrays
+                                      and objects.
+                                required:
+                                  - path
+                                  - equals
+                            oneOf:
+                              - required:
+                                  - condition
+                              - required:
+                                  - field
+                          x-kubernetes-list-type: atomic
+                        mode:
+                          type: string
+                          enum:
+                            - Predicates
+                            - None
+                      required:
+                        - mode
+                      x-kubernetes-validations:
+                        - rule: 'self.mode == ''Predicates'' ? has(self.checks) : !has(self.checks) && !has(self.observedGeneration)'
+                          message: Predicates mode requires checks; None mode permits only mode.
+                    dependencies:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+                          reference:
+                            type: string
+                            pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+                          readiness:
+                            type: object
+                            properties:
+                              observedGeneration:
+                                type: string
+                                enum:
+                                  - IfPresent
+                                  - Require
+                                  - Ignore
+                                default: IfPresent
+                              checks:
+                                type: array
+                                minItems: 1
+                                items:
+                                  type: object
+                                  properties:
+                                    condition:
+                                      type: object
+                                      properties:
+                                        type:
+                                          type: string
+                                          minLength: 1
+                                        status:
+                                          type: string
+                                          enum:
+                                            - 'True'
+                                            - 'False'
+                                            - Unknown
+                                      required:
+                                        - type
+                                        - status
+                                    field:
+                                      type: object
+                                      properties:
+                                        path:
+                                          type: string
+                                          pattern: ^(?:/(?:[^~/]|~[01])*)+$
+                                          description: Absolute JSON Pointer with RFC 6901 escaping; evaluated as a literal
+                                            path, never as an executable query.
+                                        equals:
+                                          nullable: true
+                                          x-kubernetes-preserve-unknown-fields: true
+                                          description: Required exact JSON comparison value, including null, false, zero,
+                                            arrays and objects.
+                                      required:
+                                        - path
+                                        - equals
+                                  oneOf:
+                                    - required:
+                                        - condition
+                                    - required:
+                                        - field
+                                x-kubernetes-list-type: atomic
+                            required:
+                              - checks
+                        required:
+                          - name
+                          - reference
+                          - readiness
+                      default: []
+                      description: Readiness gates keyed by unique dependency name.
+                      x-kubernetes-list-type: map
+                      x-kubernetes-list-map-keys:
+                        - name
+                    reconcileInterval:
+                      type: string
+                      pattern: ^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$
+                      default: 1m
+                      description: Positive Go-style duration from 1s through 24h, inclusive.
+                      x-kubernetes-validations:
+                        - rule: duration(self) >= duration('1s') && duration(self) <= duration('24h')
+                          message: Reconciliation interval must be between 1s and 24h.
+                    deletionPolicy:
+                      type: string
+                      enum:
+                        - abandon
+                        - delete
+                        - prevent-deletion
+                      default: abandon
+                  default: {}
+                target:
+                  type: object
+                  required:
+                    - apiVersion
+                    - kind
+                    - metadata
+                  properties:
+                    apiVersion:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    kind:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    metadata:
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                          minLength: 1
+                          not:
+                            pattern: \{\{
+                    status:
+                      type: object
+                      nullable: true
+                      x-kubernetes-preserve-unknown-fields: true
+                      description: Declared only to reject target status through validation.
+                  not:
+                    required:
+                      - status
+                  x-kubernetes-embedded-resource: true
+                  x-kubernetes-preserve-unknown-fields: true
+                  x-kubernetes-map-type: atomic
+                  x-kubernetes-validations:
+                    - rule: '!(self.apiVersion.startsWith(''kdc.rolphr.dev/'') && self.kind == ''Resource'')'
+                      message: A kdc Resource cannot target another kdc Resource.
+                    - rule: self.apiVersion == oldSelf.apiVersion && self.kind == oldSelf.kind && self.metadata.name == oldSelf.metadata.name
+                      message: Target apiVersion, kind and metadata.name are immutable.
+              required:
+                - target
+              x-kubernetes-validations:
+                - rule: '!has(self.lifecycle) || !has(self.lifecycle.dependencies) || self.lifecycle.dependencies.all(dependency,
+                    has(self.references) && dependency.reference in self.references)'
+                  message: Each dependency must reference a declared reference alias.
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  minimum: 0
+                appliedGeneration:
+                  type: integer
+                  minimum: 0
+                target:
+                  type: object
+                  properties:
+                    apiVersion:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    kind:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    name:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    namespace:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                    uid:
+                      type: string
+                      minLength: 1
+                      not:
+                        pattern: \{\{
+                lastSuccessfulReconcileTime:
+                  type: string
+                  format: date-time
+                lastAppliedTime:
+                  type: string
+                  format: date-time
+                unresolvedReferences:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: Diagnostic entry fields are not yet specified by the API design.
+                  x-kubernetes-list-type: atomic
+                unreadyDependencies:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: Diagnostic entry fields are not yet specified by the API design.
+                  x-kubernetes-list-type: atomic
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        minLength: 1
+                      status:
+                        type: string
+                        enum:
+                          - 'True'
+                          - 'False'
+                          - Unknown
+                      reason:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                      observedGeneration:
+                        type: integer
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - message
+                      - observedGeneration
+                      - lastTransitionTime
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+          required:
+            - spec

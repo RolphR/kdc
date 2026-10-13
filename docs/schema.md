@@ -1,4 +1,57 @@
-# Resource JSON Schema
+# Resource schemas
+
+## Kubernetes CRD
+
+[`config/crd/bases/kdc.rolphr.dev_resources.yaml`](../config/crd/bases/kdc.rolphr.dev_resources.yaml)
+defines the namespaced `Resource` API at `kdc.rolphr.dev/v1alpha1`, with plural
+`resources`, short name `kdcr`, and a status subresource. Install it on Kubernetes
+1.29 or newer, where CEL validation is stable:
+
+```sh
+kubectl apply -f config/crd/bases/kdc.rolphr.dev_resources.yaml
+kubectl wait --for=condition=Established --timeout=60s crd/resources.kdc.rolphr.dev
+```
+
+Installing the CRD registers the API; reconciliation still requires a kdc
+controller, which is not implemented in this repository.
+
+The structural OpenAPI schema validates known field types and readiness
+predicates. Dependency lists are maps keyed by `name`, and condition lists are
+maps keyed by `type`, preventing duplicate keys and allowing independent field
+ownership. CEL validates reference alias syntax, declared dependency aliases,
+readiness modes, durations between `1s` and `24h`, and immutable target API version,
+kind, and name. It rejects kdc wrappers as targets and rejects target `status`,
+including explicit null.
+
+The target is an atomic embedded Kubernetes resource with arbitrary desired
+fields preserved. Predicate `equals` preserves arbitrary JSON values, including
+null, false, zero, arrays, and objects. Diagnostic entries remain open until the
+API design specifies their structure.
+
+Kubernetes inserts defaults for references, lifecycle settings, and dependency
+generation policy. Omitted target readiness remains omitted. In `Predicates`
+mode, an omitted target generation policy means `IfPresent` to the controller;
+the CRD does not insert it, so `None` mode remains valid with only `mode`.
+
+Kubernetes permits only limited schema constraints on embedded resource metadata,
+and CEL cannot inspect its namespace, labels, or annotations. Admission and
+controller validation must enforce target namespace equality, permitted metadata
+fields, reserved metadata prefixes, target scope, templates, permissions,
+ownership, and deletion-time changes. These boundaries follow the
+[Kubernetes structural schema and CEL rules](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/).
+
+Unknown fields outside preserved target and diagnostic data are pruned by
+Kubernetes. Use strict field validation to reject them when submitting manifests:
+
+```sh
+kubectl apply --validate=strict -f examples/gcp/network.yaml
+```
+
+The CRD was checked with Kubernetes 1.34.1 validation libraries for structural
+schema validity, default validity, CEL compilation and cost limits, and 88 resource
+validation cases, including all 36 examples. No cluster installation was performed.
+
+## Standalone JSON Schema
 
 [`schema/resource.schema.json`](../schema/resource.schema.json) validates a single
 `kdc.rolphr.dev/v1alpha1` `Resource` using JSON Schema Draft 2020-12. It follows
