@@ -40,7 +40,7 @@ spec:
       name: upstream
   lifecycle:
     dependencies:
-      - name: upstream-available
+      - name: upstream_available
         reference: upstream
         readiness:
           observedGeneration: Require
