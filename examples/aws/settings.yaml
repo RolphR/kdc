@@ -1,0 +1,9 @@
+# Replace the marked values before using the example.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-settings
+  namespace: kdc-example-aws
+data:
+  imageId: ami-REPLACE_WITH_EU_WEST_1_AMI
+  databaseInstanceName: kdc-example-postgres

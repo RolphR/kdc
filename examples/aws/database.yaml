@@ -1,0 +1,184 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-bac477ad787df35815b8641b13dd3afe
+  namespace: kdc-example-aws
+spec:
+  references:
+    subnetA:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: Subnet
+      name: kdc-aws-database-subnet-a
+    subnetB:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: Subnet
+      name: kdc-aws-database-subnet-b
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: subnetA_ready
+        reference: subnetA
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+      - name: subnetB_ready
+        reference: subnetB
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: rds.services.k8s.aws/v1alpha1
+    kind: DBSubnetGroup
+    metadata:
+      name: kdc-aws-database-subnet-group
+    spec:
+      name: kdc-example-database
+      description: Private RDS subnets in two availability zones
+      subnetIDs:
+        - '{{ .refs.subnetA.status.subnetID }}'
+        - '{{ .refs.subnetB.status.subnetID }}'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-9443b538d47c4c8e80be3d63b433be97
+  namespace: kdc-example-aws
+spec:
+  references:
+    subnets:
+      apiVersion: rds.services.k8s.aws/v1alpha1
+      kind: DBSubnetGroup
+      name: kdc-aws-database-subnet-group
+    firewall:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: SecurityGroup
+      name: kdc-aws-allow-vm-to-database
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+        - field:
+            path: /status/dbInstanceStatus
+            equals: available
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: subnets_ready
+        reference: subnets
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: rds.services.k8s.aws/v1alpha1
+    kind: DBInstance
+    metadata:
+      name: kdc-aws-database
+    spec:
+      dbInstanceIdentifier: '{{ .refs.settings.data.databaseInstanceName }}'
+      dbInstanceClass: db.t3.micro
+      engine: postgres
+      allocatedStorage: 20
+      storageType: gp3
+      storageEncrypted: true
+      masterUsername: appuser
+      masterUserPassword:
+        name: database-credentials
+        namespace: kdc-example-aws
+        key: password
+      dbName: appdb
+      port: 5432
+      dbSubnetGroupName: '{{ .refs.subnets.spec.name }}'
+      vpcSecurityGroupIDs:
+        - '{{ .refs.firewall.status.id }}'
+      publiclyAccessible: false
+      multiAZ: false
+      backupRetentionPeriod: 7
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-1cd53b60b7bec4d52f94300a03ddfe10
+  namespace: kdc-example-aws
+spec:
+  references:
+    vm:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: Instance
+      name: kdc-aws-vm
+    database:
+      apiVersion: rds.services.k8s.aws/v1alpha1
+      kind: DBInstance
+      name: kdc-aws-database
+  lifecycle:
+    targetReadiness:
+      mode: None
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: vm_ready
+        reference: vm
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+            - field:
+                path: /status/state/name
+                equals: running
+      - name: database_ready
+        reference: database
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+            - field:
+                path: /status/dbInstanceStatus
+                equals: available
+  target:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: kdc-aws-connection
+    data:
+      host: '{{ .refs.database.status.endpoint.address }}'
+      port: '5432'
+      database: appdb
+      user: appuser
+      sslmode: require

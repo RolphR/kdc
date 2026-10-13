@@ -1,0 +1,148 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-0948fa890cb5bc2625d9482b36fee0ee
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+    subnet:
+      apiVersion: network.azure.com/v1api20201101
+      kind: VirtualNetworksSubnet
+      name: kdc-azure-database-subnet
+    dns:
+      apiVersion: network.azure.com/v1api20180901
+      kind: PrivateDnsZone
+      name: kdc-azure-database-dns
+    dnsLink:
+      apiVersion: network.azure.com/v1api20200601
+      kind: PrivateDnsZonesVirtualNetworkLink
+      name: kdc-azure-database-dns-link
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: dns_ready
+        reference: dns
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: dnsLink_ready
+        reference: dnsLink
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: dbforpostgresql.azure.com/v1api20240801
+    kind: FlexibleServer
+    metadata:
+      name: kdc-azure-database
+    spec:
+      owner:
+        name: kdc-azure-resource-group
+      azureName: '{{ .refs.settings.data.databaseServerName }}'
+      location: westeurope
+      version: '16'
+      sku:
+        name: Standard_B1ms
+        tier: Burstable
+      administratorLogin: appuser
+      administratorLoginPassword:
+        name: database-credentials
+        key: password
+      storage:
+        storageSizeGB: 32
+      backup:
+        backupRetentionDays: 7
+      network:
+        delegatedSubnetResourceReference:
+          armId: '{{ .refs.subnet.status.id }}'
+        privateDnsZoneArmResourceReference:
+          armId: '{{ .refs.dns.status.id }}'
+        publicNetworkAccess: Disabled
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-2005a57e23a408fb19630fd3e4700adb
+  namespace: kdc-example-azure
+spec:
+  references:
+    vm:
+      apiVersion: compute.azure.com/v1api20220301
+      kind: VirtualMachine
+      name: kdc-azure-vm
+    database:
+      apiVersion: dbforpostgresql.azure.com/v1api20240801
+      kind: FlexibleServer
+      name: kdc-azure-database
+  lifecycle:
+    targetReadiness:
+      mode: None
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: vm_ready
+        reference: vm
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: database_ready
+        reference: database
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: kdc-azure-connection
+    data:
+      host: '{{ .refs.database.status.fullyQualifiedDomainName }}'
+      port: '5432'
+      database: postgres
+      user: appuser
+      sslmode: require

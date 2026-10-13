@@ -1,0 +1,170 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-7ea296f10906f51ac3982e1e6ebde2a0
+  namespace: kdc-example-gcp
+spec:
+  references:
+    subnet:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeSubnetwork
+      name: kdc-gcp-vm-subnet
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeAddress
+    metadata:
+      name: kdc-gcp-vm-address
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      location: europe-west4
+      addressType: INTERNAL
+      address: 10.20.1.10
+      subnetworkRef:
+        external: '{{ .refs.subnet.status.selfLink }}'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-ee03dd18fc65980428643d920d06d583
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    subnet:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeSubnetwork
+      name: kdc-gcp-vm-subnet
+    address:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeAddress
+      name: kdc-gcp-vm-address
+    endpoint:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeForwardingRule
+      name: kdc-gcp-database-endpoint
+    firewall:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeFirewall
+      name: kdc-gcp-allow-vm-to-database
+    user:
+      apiVersion: sql.cnrm.cloud.google.com/v1beta1
+      kind: SQLUser
+      name: kdc-gcp-database-user
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: address_ready
+        reference: address
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: endpoint_ready
+        reference: endpoint
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+            - field:
+                path: /status/pscConnectionStatus
+                equals: ACCEPTED
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: user_ready
+        reference: user
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeInstance
+    metadata:
+      name: kdc-gcp-vm
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      zone: europe-west4-a
+      machineType: e2-small
+      bootDisk:
+        initializeParams:
+          sourceImageRef:
+            external: projects/debian-cloud/global/images/family/debian-12
+          size: 20
+      networkInterface:
+        - networkRef:
+            external: '{{ .refs.network.status.selfLink }}'
+          subnetworkRef:
+            external: '{{ .refs.subnet.status.selfLink }}'
+          networkIpRef:
+            name: kdc-gcp-vm-address
+      tags:
+        - kdc-postgres-client

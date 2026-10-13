@@ -1,0 +1,270 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-c3cbe246b4f01dd45a684a4050e5102b
+  namespace: kdc-example-gcp
+spec:
+  references:
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeNetwork
+    metadata:
+      name: kdc-gcp-network
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      autoCreateSubnetworks: false
+      routingMode: REGIONAL
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-2849fef50bda90dfff4565b98c0b840b
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeSubnetwork
+    metadata:
+      name: kdc-gcp-vm-subnet
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      region: europe-west4
+      ipCidrRange: 10.20.1.0/24
+      networkRef:
+        external: '{{ .refs.network.status.selfLink }}'
+      privateIpGoogleAccess: true
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-2a98c1d63f1f84bf16eb6ceee0af8cb2
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeSubnetwork
+    metadata:
+      name: kdc-gcp-database-subnet
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      region: europe-west4
+      ipCidrRange: 10.20.2.0/24
+      networkRef:
+        external: '{{ .refs.network.status.selfLink }}'
+      privateIpGoogleAccess: true
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-b481714355c267c1c17ec566143a57a6
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    address:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeAddress
+      name: kdc-gcp-database-address
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: address_ready
+        reference: address
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeFirewall
+    metadata:
+      name: kdc-gcp-deny-other-database-access
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      networkRef:
+        external: '{{ .refs.network.status.selfLink }}'
+      direction: EGRESS
+      priority: 2000
+      destinationRanges:
+        - '{{ .refs.address.status.address }}/32'
+      deny:
+        - protocol: all
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-7bf29652deac5a621c0856be904306d3
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    address:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeAddress
+      name: kdc-gcp-database-address
+    deny:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeFirewall
+      name: kdc-gcp-deny-other-database-access
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: address_ready
+        reference: address
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: deny_ready
+        reference: deny
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeFirewall
+    metadata:
+      name: kdc-gcp-allow-vm-to-database
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      networkRef:
+        external: '{{ .refs.network.status.selfLink }}'
+      direction: EGRESS
+      priority: 1000
+      targetTags:
+        - kdc-postgres-client
+      destinationRanges:
+        - '{{ .refs.address.status.address }}/32'
+      allow:
+        - protocol: tcp
+          ports:
+            - '5432'

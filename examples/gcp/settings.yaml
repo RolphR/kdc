@@ -1,0 +1,9 @@
+# Replace the marked values before using the example.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-settings
+  namespace: kdc-example-gcp
+data:
+  projectId: REPLACE_WITH_GCP_PROJECT_ID
+  databaseInstanceName: replace-with-unique-cloud-sql-name

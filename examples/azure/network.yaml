@@ -1,0 +1,495 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-efb69883c0a4d21d3ce558df8262f626
+  namespace: kdc-example-azure
+spec:
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+  target:
+    apiVersion: resources.azure.com/v1api20200601
+    kind: ResourceGroup
+    metadata:
+      name: kdc-azure-resource-group
+    spec:
+      location: westeurope
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-dd58f0f7e9fb236be102dbd351b710d9
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: VirtualNetwork
+    metadata:
+      name: kdc-azure-network
+    spec:
+      location: westeurope
+      owner:
+        name: kdc-azure-resource-group
+      addressSpace:
+        addressPrefixes:
+          - 10.40.0.0/16
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-6be21ae5fe737914c1bcdd94074bbc6c
+  namespace: kdc-example-azure
+spec:
+  references:
+    network:
+      apiVersion: network.azure.com/v1api20201101
+      kind: VirtualNetwork
+      name: kdc-azure-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: VirtualNetworksSubnet
+    metadata:
+      name: kdc-azure-vm-subnet
+    spec:
+      owner:
+        name: kdc-azure-network
+      addressPrefix: 10.40.1.0/24
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-660f607c80b849f281604caf41f9c2cf
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: NetworkSecurityGroup
+    metadata:
+      name: kdc-azure-database-firewall
+    spec:
+      location: westeurope
+      owner:
+        name: kdc-azure-resource-group
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-160f7db2685013965257f172c2584406
+  namespace: kdc-example-azure
+spec:
+  references:
+    firewall:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroup
+      name: kdc-azure-database-firewall
+    nic:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkInterface
+      name: kdc-azure-vm-address
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: nic_ready
+        reference: nic
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: NetworkSecurityGroupsSecurityRule
+    metadata:
+      name: kdc-azure-allow-vm-to-database
+    spec:
+      owner:
+        name: kdc-azure-database-firewall
+      priority: 100
+      direction: Inbound
+      access: Allow
+      protocol: Tcp
+      sourceAddressPrefix: 10.40.1.10/32
+      sourcePortRange: '*'
+      destinationAddressPrefix: 10.40.2.0/24
+      destinationPortRange: '5432'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-c1f666023f00cb4ca27b0c4ea6451bbf
+  namespace: kdc-example-azure
+spec:
+  references:
+    firewall:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroup
+      name: kdc-azure-database-firewall
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: NetworkSecurityGroupsSecurityRule
+    metadata:
+      name: kdc-azure-allow-database-internal
+    spec:
+      owner:
+        name: kdc-azure-database-firewall
+      priority: 110
+      direction: Inbound
+      access: Allow
+      protocol: Tcp
+      sourceAddressPrefix: 10.40.2.0/24
+      sourcePortRange: '*'
+      destinationAddressPrefix: 10.40.2.0/24
+      destinationPortRange: '5432'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-1dbc14805ece494f79bf3b59a220837c
+  namespace: kdc-example-azure
+spec:
+  references:
+    firewall:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroup
+      name: kdc-azure-database-firewall
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: NetworkSecurityGroupsSecurityRule
+    metadata:
+      name: kdc-azure-deny-other-database-access
+    spec:
+      owner:
+        name: kdc-azure-database-firewall
+      priority: 200
+      direction: Inbound
+      access: Deny
+      protocol: Tcp
+      sourceAddressPrefix: '*'
+      sourcePortRange: '*'
+      destinationAddressPrefix: 10.40.2.0/24
+      destinationPortRange: '5432'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-b3fba26e50eaf0b96020b925fb70acfe
+  namespace: kdc-example-azure
+spec:
+  references:
+    network:
+      apiVersion: network.azure.com/v1api20201101
+      kind: VirtualNetwork
+      name: kdc-azure-network
+    firewall:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroup
+      name: kdc-azure-database-firewall
+    allow:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroupsSecurityRule
+      name: kdc-azure-allow-vm-to-database
+    internal:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroupsSecurityRule
+      name: kdc-azure-allow-database-internal
+    deny:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkSecurityGroupsSecurityRule
+      name: kdc-azure-deny-other-database-access
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: allow_ready
+        reference: allow
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: internal_ready
+        reference: internal
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: deny_ready
+        reference: deny
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: VirtualNetworksSubnet
+    metadata:
+      name: kdc-azure-database-subnet
+    spec:
+      owner:
+        name: kdc-azure-network
+      addressPrefix: 10.40.2.0/24
+      delegations:
+        - name: postgresql
+          serviceName: Microsoft.DBforPostgreSQL/flexibleServers
+      networkSecurityGroup:
+        reference:
+          armId: '{{ .refs.firewall.status.id }}'
+      serviceEndpoints:
+        - service: Microsoft.Storage
+          locations:
+            - westeurope
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-6d40f642981f42ce85170f2decba068e
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20180901
+    kind: PrivateDnsZone
+    metadata:
+      name: kdc-azure-database-dns
+    spec:
+      owner:
+        name: kdc-azure-resource-group
+      location: global
+      azureName: kdc-example.postgres.database.azure.com
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-9e9018760e053b6c52d2559563cb8606
+  namespace: kdc-example-azure
+spec:
+  references:
+    dns:
+      apiVersion: network.azure.com/v1api20180901
+      kind: PrivateDnsZone
+      name: kdc-azure-database-dns
+    network:
+      apiVersion: network.azure.com/v1api20201101
+      kind: VirtualNetwork
+      name: kdc-azure-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: dns_ready
+        reference: dns
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20200601
+    kind: PrivateDnsZonesVirtualNetworkLink
+    metadata:
+      name: kdc-azure-database-dns-link
+    spec:
+      owner:
+        name: kdc-azure-database-dns
+      location: global
+      registrationEnabled: false
+      virtualNetwork:
+        reference:
+          armId: '{{ .refs.network.status.id }}'

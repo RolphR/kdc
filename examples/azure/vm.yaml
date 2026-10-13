@@ -1,0 +1,153 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-c8f8f2eccd43f880c9dc8ed087d27e6a
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+    subnet:
+      apiVersion: network.azure.com/v1api20201101
+      kind: VirtualNetworksSubnet
+      name: kdc-azure-vm-subnet
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: network.azure.com/v1api20201101
+    kind: NetworkInterface
+    metadata:
+      name: kdc-azure-vm-address
+    spec:
+      location: westeurope
+      owner:
+        name: kdc-azure-resource-group
+      ipConfigurations:
+        - name: primary
+          primary: true
+          privateIPAddress: 10.40.1.10
+          privateIPAllocationMethod: Static
+          subnet:
+            reference:
+              armId: '{{ .refs.subnet.status.id }}'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-34ea90b8404c51883a40cef46a8c3365
+  namespace: kdc-example-azure
+spec:
+  references:
+    group:
+      apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: kdc-azure-resource-group
+    nic:
+      apiVersion: network.azure.com/v1api20201101
+      kind: NetworkInterface
+      name: kdc-azure-vm-address
+    database:
+      apiVersion: dbforpostgresql.azure.com/v1api20240801
+      kind: FlexibleServer
+      name: kdc-azure-database
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: group_ready
+        reference: group
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: nic_ready
+        reference: nic
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: database_ready
+        reference: database
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.azure.com/v1api20220301
+    kind: VirtualMachine
+    metadata:
+      name: kdc-azure-vm
+    spec:
+      owner:
+        name: kdc-azure-resource-group
+      location: westeurope
+      hardwareProfile:
+        vmSize: Standard_B1s
+      networkProfile:
+        networkInterfaces:
+          - reference:
+              armId: '{{ .refs.nic.status.id }}'
+      osProfile:
+        computerName: kdc-client
+        adminUsername: azureuser
+        linuxConfiguration:
+          disablePasswordAuthentication: true
+          ssh:
+            publicKeys:
+              - path: /home/azureuser/.ssh/authorized_keys
+                keyData: '{{ .refs.settings.data.sshPublicKey }}'
+      storageProfile:
+        imageReference:
+          publisher: Canonical
+          offer: 0001-com-ubuntu-server-jammy
+          sku: 22_04-lts-gen2
+          version: latest
+        osDisk:
+          createOption: FromImage
+          managedDisk:
+            storageAccountType: Standard_LRS

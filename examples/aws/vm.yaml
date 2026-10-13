@@ -1,0 +1,64 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-d7cfda1aa0eae5fabd7af90a043bd299
+  namespace: kdc-example-aws
+spec:
+  references:
+    subnet:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: Subnet
+      name: kdc-aws-vm-subnet
+    firewall:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: SecurityGroup
+      name: kdc-aws-vm-firewall
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+        - field:
+            path: /status/state/name
+            equals: running
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+      - name: firewall_ready
+        reference: firewall
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: Instance
+    metadata:
+      name: kdc-aws-vm
+    spec:
+      imageID: '{{ .refs.settings.data.imageId }}'
+      instanceType: t3.micro
+      subnetID: '{{ .refs.subnet.status.subnetID }}'
+      privateIPAddress: 10.30.1.10
+      securityGroupIDs:
+        - '{{ .refs.firewall.status.id }}'
+      metadataOptions:
+        httpTokens: required

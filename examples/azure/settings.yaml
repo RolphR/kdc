@@ -1,0 +1,9 @@
+# Replace the marked values before using the example.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-settings
+  namespace: kdc-example-azure
+data:
+  databaseServerName: replace-with-unique-postgres-name
+  sshPublicKey: REPLACE_WITH_YOUR_SSH_RSA_PUBLIC_KEY

@@ -1,0 +1,260 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-472981c9ad918c796cfb4570aa75d81b
+  namespace: kdc-example-aws
+spec:
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: VPC
+    metadata:
+      name: kdc-aws-network
+    spec:
+      cidrBlocks:
+        - 10.30.0.0/16
+      enableDNSHostnames: true
+      enableDNSSupport: true
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-1bff18a3573e160549f403e81bd331c5
+  namespace: kdc-example-aws
+spec:
+  references:
+    network:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: VPC
+      name: kdc-aws-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: Subnet
+    metadata:
+      name: kdc-aws-vm-subnet
+    spec:
+      vpcID: '{{ .refs.network.status.vpcID }}'
+      cidrBlock: 10.30.1.0/24
+      availabilityZone: eu-west-1a
+      mapPublicIPOnLaunch: false
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-48355763d38337116e5af83ef608c3b7
+  namespace: kdc-example-aws
+spec:
+  references:
+    network:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: VPC
+      name: kdc-aws-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: Subnet
+    metadata:
+      name: kdc-aws-database-subnet-a
+    spec:
+      vpcID: '{{ .refs.network.status.vpcID }}'
+      cidrBlock: 10.30.2.0/24
+      availabilityZone: eu-west-1a
+      mapPublicIPOnLaunch: false
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-0851b819d0ba135fa237aa2be66b8a34
+  namespace: kdc-example-aws
+spec:
+  references:
+    network:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: VPC
+      name: kdc-aws-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: Subnet
+    metadata:
+      name: kdc-aws-database-subnet-b
+    spec:
+      vpcID: '{{ .refs.network.status.vpcID }}'
+      cidrBlock: 10.30.3.0/24
+      availabilityZone: eu-west-1b
+      mapPublicIPOnLaunch: false
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-76301769af2547031943fda3d37bf4a5
+  namespace: kdc-example-aws
+spec:
+  references:
+    network:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: VPC
+      name: kdc-aws-network
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: SecurityGroup
+    metadata:
+      name: kdc-aws-vm-firewall
+    spec:
+      name: kdc-example-vm
+      description: VM egress to PostgreSQL database subnets only
+      vpcID: '{{ .refs.network.status.vpcID }}'
+      ingressRules: []
+      egressRules:
+        - ipProtocol: tcp
+          fromPort: 5432
+          toPort: 5432
+          ipRanges:
+            - cidrIP: 10.30.2.0/24
+            - cidrIP: 10.30.3.0/24
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-124733d6d9f6b07760dbe2ecfa40f7e7
+  namespace: kdc-example-aws
+spec:
+  references:
+    network:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: VPC
+      name: kdc-aws-network
+    vm:
+      apiVersion: ec2.services.k8s.aws/v1alpha1
+      kind: Instance
+      name: kdc-aws-vm
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: IfPresent
+      checks:
+        - condition:
+            type: ACK.ResourceSynced
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+      - name: vm_ready
+        reference: vm
+        readiness:
+          observedGeneration: IfPresent
+          checks:
+            - condition:
+                type: ACK.ResourceSynced
+                status: 'True'
+            - field:
+                path: /status/state/name
+                equals: running
+  target:
+    apiVersion: ec2.services.k8s.aws/v1alpha1
+    kind: SecurityGroup
+    metadata:
+      name: kdc-aws-allow-vm-to-database
+    spec:
+      name: kdc-example-database
+      description: Allow PostgreSQL from the fixed VM private IP only
+      vpcID: '{{ .refs.network.status.vpcID }}'
+      ingressRules:
+        - ipProtocol: tcp
+          fromPort: 5432
+          toPort: 5432
+          ipRanges:
+            - cidrIP: '{{ .refs.vm.spec.privateIPAddress }}/32'
+      egressRules: []

@@ -1,0 +1,307 @@
+# kdc design example. See ../../docs/examples.md for prerequisites and provider details.
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-dc193d67a07be57076ac2349fe001681
+  namespace: kdc-example-gcp
+spec:
+  references:
+    subnet:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeSubnetwork
+      name: kdc-gcp-database-subnet
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: subnet_ready
+        reference: subnet
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeAddress
+    metadata:
+      name: kdc-gcp-database-address
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      location: europe-west4
+      addressType: INTERNAL
+      address: 10.20.2.10
+      subnetworkRef:
+        external: '{{ .refs.subnet.status.selfLink }}'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-9fbf9eaf3ab5664929609f0321e564c8
+  namespace: kdc-example-gcp
+spec:
+  references:
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+  target:
+    apiVersion: sql.cnrm.cloud.google.com/v1beta1
+    kind: SQLInstance
+    metadata:
+      name: kdc-gcp-database
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      resourceID: '{{ .refs.settings.data.databaseInstanceName }}'
+      databaseVersion: POSTGRES_16
+      region: europe-west4
+      settings:
+        tier: db-custom-2-7680
+        edition: ENTERPRISE
+        diskSize: 20
+        diskType: PD_SSD
+        backupConfiguration:
+          enabled: true
+          pointInTimeRecoveryEnabled: true
+        ipConfiguration:
+          ipv4Enabled: false
+          pscConfig:
+            - pscEnabled: true
+              allowedConsumerProjects:
+                - '{{ .refs.settings.data.projectId }}'
+          sslMode: ENCRYPTED_ONLY
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-9e95a97007cdefc196b4cf5cbdfa7342
+  namespace: kdc-example-gcp
+spec:
+  references:
+    network:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeNetwork
+      name: kdc-gcp-network
+    address:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeAddress
+      name: kdc-gcp-database-address
+    database:
+      apiVersion: sql.cnrm.cloud.google.com/v1beta1
+      kind: SQLInstance
+      name: kdc-gcp-database
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+        - field:
+            path: /status/pscConnectionStatus
+            equals: ACCEPTED
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: network_ready
+        reference: network
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: address_ready
+        reference: address
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: database_ready
+        reference: database
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: compute.cnrm.cloud.google.com/v1beta1
+    kind: ComputeForwardingRule
+    metadata:
+      name: kdc-gcp-database-endpoint
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      location: europe-west4
+      loadBalancingScheme: ''
+      networkRef:
+        external: '{{ .refs.network.status.selfLink }}'
+      ipAddress:
+        addressRef:
+          name: kdc-gcp-database-address
+      target:
+        serviceAttachmentRef:
+          external: '{{ .refs.database.status.pscServiceAttachmentLink }}'
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-dea95bc0c03446d89b1f6b94532bcf47
+  namespace: kdc-example-gcp
+spec:
+  references:
+    database:
+      apiVersion: sql.cnrm.cloud.google.com/v1beta1
+      kind: SQLInstance
+      name: kdc-gcp-database
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: Predicates
+      observedGeneration: Require
+      checks:
+        - condition:
+            type: Ready
+            status: 'True'
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: database_ready
+        reference: database
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: sql.cnrm.cloud.google.com/v1beta1
+    kind: SQLUser
+    metadata:
+      name: kdc-gcp-database-user
+      annotations:
+        cnrm.cloud.google.com/project-id: '{{ .refs.settings.data.projectId }}'
+    spec:
+      resourceID: appuser
+      instanceRef:
+        name: kdc-gcp-database
+      password:
+        valueFrom:
+          secretKeyRef:
+            name: database-credentials
+            key: password
+---
+apiVersion: kdc.rolphr.dev/v1alpha1
+kind: Resource
+metadata:
+  name: kdcr-117d8b6759a6724bc10c1d1cef72b289
+  namespace: kdc-example-gcp
+spec:
+  references:
+    vm:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeInstance
+      name: kdc-gcp-vm
+    address:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeAddress
+      name: kdc-gcp-database-address
+    endpoint:
+      apiVersion: compute.cnrm.cloud.google.com/v1beta1
+      kind: ComputeForwardingRule
+      name: kdc-gcp-database-endpoint
+    user:
+      apiVersion: sql.cnrm.cloud.google.com/v1beta1
+      kind: SQLUser
+      name: kdc-gcp-database-user
+    settings:
+      apiVersion: v1
+      kind: ConfigMap
+      name: example-settings
+  lifecycle:
+    targetReadiness:
+      mode: None
+    reconcileInterval: 1m
+    deletionPolicy: abandon
+    dependencies:
+      - name: vm_ready
+        reference: vm
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: address_ready
+        reference: address
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+      - name: endpoint_ready
+        reference: endpoint
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+            - field:
+                path: /status/pscConnectionStatus
+                equals: ACCEPTED
+      - name: user_ready
+        reference: user
+        readiness:
+          observedGeneration: Require
+          checks:
+            - condition:
+                type: Ready
+                status: 'True'
+  target:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: kdc-gcp-connection
+    data:
+      host: '{{ .refs.address.status.address }}'
+      port: '5432'
+      database: postgres
+      user: appuser
+      sslmode: require
